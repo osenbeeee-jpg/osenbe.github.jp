@@ -1,0 +1,1219 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f3f5f7">
+  <title>ビジュアルタイマー</title>
+  <style>
+    :root {
+      color-scheme: light;
+      /* The theme changes hue only: saturation and lightness stay fixed. */
+      --theme-hue: 213;
+      --navy: hsl(var(--theme-hue) 35.4% 31.6%);
+      --navy-dark: hsl(var(--theme-hue) 39.7% 24.7%);
+      --ink: hsl(var(--theme-hue) 20.7% 23.7%);
+      --muted: hsl(var(--theme-hue) 11.1% 52.4%);
+      --page: hsl(var(--theme-hue) 20% 96.1%);
+      --line: hsl(var(--theme-hue) 21.7% 91%);
+      --track: hsl(var(--theme-hue) 22.2% 92.9%);
+      --accent-soft: hsl(var(--theme-hue) 20% 96%);
+      --accent-hover: hsl(var(--theme-hue) 25% 93%);
+      --accent-focus: hsl(var(--theme-hue) 33% 62%);
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      min-height: 100vh;
+      min-height: 100dvh;
+    }
+    button { font: inherit; -webkit-tap-highlight-color: transparent; }
+    button:focus-visible, label:focus-within { outline: 3px solid var(--accent-focus); outline-offset: 3px; }
+    .page {
+      width: min(100% - 28px, 560px);
+      margin: 0 auto;
+      padding: clamp(24px, 5vh, 48px) 0 max(28px, env(safe-area-inset-bottom));
+    }
+    header { text-align: center; margin-bottom: 16px; }
+    .eyebrow { margin: 0; font-size: 11px; letter-spacing: .23em; color: var(--muted); font-weight: 700; }
+    h1 { margin: 9px 0 0; font-size: clamp(19px, 4.6vw, 24px); letter-spacing: .055em; font-weight: 600; }
+    .card {
+      border: 1px solid var(--line);
+      box-shadow: 0 12px 30px rgba(43, 59, 72, .045);
+      border-radius: 24px;
+      background: #fff;
+      padding: clamp(14px, 4vw, 30px);
+    }
+    .dial {
+      position: relative;
+      width: min(100%, 420px);
+      aspect-ratio: 1;
+      margin: 0 auto 21px;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+    .dial svg { width: 100%; height: 100%; display: block; overflow: visible; }
+    .dial-shell { fill: #fff; stroke: var(--line); stroke-width: 2; }
+    .dial-track { fill: none; stroke: var(--track); stroke-width: 30; }
+    .dial-progress { fill: none; stroke: var(--navy); stroke-width: 30; stroke-linecap: butt; }
+    .tick { stroke: hsl(var(--theme-hue) 14.6% 69.2%); stroke-width: 1.8; stroke-linecap: round; }
+    .image-circle {
+      position: absolute;
+      width: 60%;
+      aspect-ratio: 1;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      overflow: hidden;
+      background: linear-gradient(155deg, hsl(var(--theme-hue) 20.7% 88.6%) 0%, hsl(var(--theme-hue) 20.4% 80.8%) 100%);
+      display: grid;
+      place-items: center;
+      isolation: isolate;
+      cursor: pointer;
+      outline-offset: 3px;
+    }
+    .image-circle.has-image { cursor: grab; touch-action: none; }
+    .image-circle.is-panning { cursor: grabbing; }
+    .image-circle:focus-visible { outline: 3px solid var(--accent-focus); }
+    .image-circle.drag-over { box-shadow: 0 0 0 4px var(--accent-focus); }
+    .photo {
+      display: none; position: absolute; top: 50%; left: 50%;
+      width: auto; height: auto; max-width: none; max-height: none;
+      transform: translate(-50%, -50%);
+      pointer-events: none; user-select: none; -webkit-user-drag: none;
+    }
+    .image-circle.has-image .photo { display: block; }
+    .placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted); z-index: 1; }
+    .placeholder svg { width: 28px; height: 28px; }
+    .placeholder span { font-size: clamp(10px, 2.5vw, 12px); font-weight: 500; }
+    .image-circle.has-image .placeholder { display: none; }
+    .time-readout { text-align: center; margin: -7px 0 3px; }
+    .time-readout time {
+      display: block;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Arial", sans-serif;
+      font-size: clamp(34px, 8.5vw, 45px);
+      font-weight: 640;
+      font-variant-numeric: tabular-nums;
+      font-feature-settings: "tnum";
+      letter-spacing: .015em;
+      line-height: 1.25;
+      color: var(--navy);
+    }
+    .section-label { margin: 0 0 10px; font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .05em; }
+    .mode-selector { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: var(--accent-soft); border: 1px solid var(--line); border-radius: 13px; padding: 5px; margin: 0 0 18px; }
+    .mode-button { border: 0; background: transparent; color: var(--muted); padding: 10px 7px; min-height: 44px; border-radius: 9px; font-weight: 650; font-size: 13px; cursor: pointer; }
+    .mode-button[aria-pressed="true"] { background: var(--navy); color: #fff; box-shadow: 0 1px 4px rgba(25,41,60,.13); }
+    .mode-button:focus-visible { outline: 3px solid var(--accent-focus); outline-offset: 2px; }
+    .pomodoro-details { text-align: center; margin: -2px 0 13px; }
+    .pomodoro-details[hidden], .normal-settings[hidden] { display: none; }
+    .pomodoro-phase { display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; }
+    .phase-title { font-size: 15px; font-weight: 700; color: var(--navy); }
+    .phase-count { color: var(--muted); font-size: 12px; font-weight: 650; }
+    .round-indicators { margin: 10px auto 8px; display: flex; justify-content: center; gap: 9px; }
+    .round-indicators span { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+    .round-indicators span[aria-current="step"] { background: var(--navy); transform: scale(1.18); }
+    .pomodoro-caption { margin: 0; font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+    .presets { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+    .preset {
+      min-width: 0;
+      min-height: 46px;
+      padding: 8px 4px;
+      color: var(--muted);
+      font-size: clamp(13px, 3.3vw, 15px);
+      background: var(--accent-soft);
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .16s, color .16s, border-color .16s;
+    }
+    .preset[aria-pressed="true"] { background: var(--navy); border-color: var(--navy); color: #fff; }
+    .preset:hover:not([aria-pressed="true"]) { background: var(--accent-hover); }
+    .controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+    .action {
+      min-height: 50px;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 11px;
+      color: var(--ink);
+      font-size: clamp(13px, 3.4vw, 15px);
+      font-weight: 650;
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+    .action svg { flex: 0 0 17px; width: 17px; height: 17px; stroke-width: 2; }
+    .action.primary { background: var(--navy); color: #fff; border-color: var(--navy); }
+    .action.primary:hover:not(:disabled) { background: var(--navy-dark); }
+    .action:hover:not(:disabled):not(.primary) { background: var(--accent-soft); }
+    .action:disabled { cursor: not-allowed; opacity: .42; }
+    .footer { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 18px; display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .image-upload {
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+      gap: 7px;
+      min-height: 44px;
+      border-radius: 10px;
+      color: var(--ink);
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 0 12px;
+      background: var(--accent-soft);
+      border: 1px solid var(--line);
+    }
+    .image-upload:hover { background: var(--accent-hover); }
+    .image-upload svg { width: 17px; height: 17px; }
+    .remove-image {
+      min-height: 44px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 0 9px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .remove-image[hidden] { display: none; }
+    .hint { color: var(--muted); text-align: center; font-size: 11px; margin: 13px 0 0; line-height: 1.6; }
+    .backup-panel { margin-top: 13px; border: 1px solid var(--line); border-radius: 13px; background: var(--accent-soft); padding: 14px; }
+    .backup-title { font-size: 12px; font-weight: 700; margin: 0 0 7px; color: var(--ink); }
+    .backup-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+    .backup-button { display: flex; justify-content: center; align-items: center; padding: 8px 6px; min-height: 44px; color: var(--navy); border: 1px solid var(--line); background: #fff; border-radius: 10px; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; text-align: center; }
+    .backup-button:hover { background: var(--accent-hover); }
+    .backup-button:disabled { opacity: .55; cursor: wait; }
+    .backup-note { margin: 9px 0 0; color: var(--muted); font-size: 11px; line-height: 1.65; }
+    .backup-feedback { font-size: 11px; margin: 7px 0 0; color: var(--navy); min-height: 0; line-height: 1.5; }
+    .backup-feedback:empty { display: none; }
+    .utility-row { margin-top: 10px; display: flex; justify-content: center; }
+    .reset-settings { min-height: 36px; border: none; background: transparent; color: var(--muted); cursor: pointer; padding: 0 8px; font-size: 12px; font-weight: 600; }
+    .reset-settings:hover { color: var(--ink); }
+    .sound-panel { margin-top: 17px; border-top: 1px solid var(--line); padding-top: 16px; }
+    .sound-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .sound-header .section-label { margin: 0; }
+    .sound-switch { display: inline-flex; gap: 7px; align-items: center; color: var(--ink); font-size: 12px; font-weight: 600; cursor: pointer; min-height: 30px; }
+    .sound-switch input { accent-color: var(--navy); width: 17px; height: 17px; cursor: pointer; }
+    .sound-summary { color: var(--muted); font-size: 12px; margin: 4px 0 11px; }
+    .sound-tools { display: flex; gap: 9px; flex-wrap: wrap; }
+    .sound-control { border: 1px solid var(--line); background: var(--accent-soft); color: var(--ink); border-radius: 10px; padding: 0 14px; height: 40px; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; cursor: pointer; font-size: 12px; }
+    .sound-control:hover { background: var(--accent-hover); }
+    .sound-instructions { color: var(--muted); font-size: 11px; line-height: 1.7; margin: 9px 0 0; }
+
+    /* Image positioning: drag the image, or use the precise controls. */
+    .image-tuner[hidden] { display: none; }
+    .image-tuner {
+      margin-top: 15px;
+      padding: 14px 15px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--accent-soft);
+    }
+    .tuner-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .tuner-heading .section-label { margin: 0; }
+    .subtle-button {
+      background: transparent; border: 0; color: var(--navy);
+      min-height: 36px; padding: 0 4px; cursor: pointer;
+      font-size: 12px; font-weight: 600;
+    }
+    .tuner-hint { margin: 3px 0 11px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .tuner-controls { display: grid; gap: 10px; }
+    .range-row { display: grid; grid-template-columns: 42px minmax(0, 1fr) 46px; gap: 10px; align-items: center; }
+    .range-row label { font-size: 12px; color: var(--ink); font-weight: 600; }
+    .range-row output { text-align: right; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+    input[type=range] { min-width: 0; width: 100%; accent-color: var(--navy); cursor: pointer; }
+
+    /* Each swatch changes hue only, keeping the original muted color balance. */
+    .theme-panel { border-top: 1px solid var(--line); margin-top: 17px; padding-top: 16px; }
+    .theme-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+    .theme-heading .section-label { margin: 0; }
+    .theme-hint { font-size: 11px; color: var(--muted); }
+    .swatches { display: flex; flex-wrap: wrap; gap: 5px; }
+    .swatch {
+      width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line);
+      background: #fff; cursor: pointer; display: grid; place-items: center;
+      padding: 0; position: relative;
+    }
+    .swatch::before {
+      content: ''; display: block; width: 27px; height: 27px; border-radius: 50%;
+      background: hsl(var(--swatch-hue) 35.4% 31.6%);
+    }
+    .swatch[aria-pressed=true] { outline: 2px solid var(--navy); outline-offset: 1px; }
+    .swatch[aria-pressed=true]::after {
+      content: ''; position: absolute; width: 7px; height: 12px;
+      border: solid #fff; border-width: 0 2px 2px 0;
+      transform: rotate(45deg) translate(-1px, -1px);
+    }
+    .hue-row { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 10px; align-items: center; margin-top: 10px; }
+    .hue-row label { font-size: 12px; font-weight: 600; color: var(--muted); }
+    .hue-row input { margin: 0; }
+
+    .status { text-align: center; min-height: 19px; margin: 4px 0 17px; color: var(--muted); font-size: 12px; letter-spacing: .05em; }
+    .status.completed { color: var(--navy); font-weight: 700; }
+    input[type=file] { display: none; }
+    @media (max-width: 380px) {
+      .page { width: calc(100% - 20px); padding-top: 20px; }
+      .card { padding: 11px; border-radius: 18px; }
+      .dial { margin-bottom: 13px; }
+      .controls { gap: 5px; }
+      .presets { gap: 5px; }
+      .action { gap: 4px; }
+      .action svg { width: 15px; height: 15px; flex-basis: 15px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .preset, .action { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <p class="eyebrow">VISUAL TIMER</p>
+      <h1>ビジュアルタイマー</h1>
+    </header>
+    <section class="card" aria-label="タイマー">
+      <div class="dial" id="dial">
+        <svg viewBox="0 0 420 420" aria-hidden="true" focusable="false">
+          <circle class="dial-shell" cx="210" cy="210" r="205" />
+          <circle class="dial-track" cx="210" cy="210" r="155" />
+          <circle id="fullRing" class="dial-progress" cx="210" cy="210" r="155" />
+          <path id="remainingArc" class="dial-progress" d="" />
+          <g id="tickGroup"></g>
+        </svg>
+        <div class="image-circle" id="imageCircle" role="button" tabindex="0" aria-label="中央の画像を選ぶ。クリックまたはタップして変更できます">
+          <img id="photo" class="photo" alt="設定したタイマー画像" draggable="false">
+          <div class="placeholder" id="placeholder" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6">
+              <rect x="3" y="3" width="18" height="18" rx="3"></rect>
+              <circle cx="8.4" cy="8.6" r="1.5"></circle>
+              <path d="m3 17 5-5 4 4 3-3 6 5"></path>
+            </svg>
+            <span>画像を追加</span>
+          </div>
+        </div>
+      </div>
+      <div class="time-readout"><time id="timeText" aria-label="残り時間30分">30:00</time></div>
+      <p class="status" id="status" role="status" aria-live="polite">準備完了</p>
+      <div class="mode-selector" role="group" aria-label="タイマーモード">
+        <button class="mode-button" id="normalMode" type="button" aria-pressed="true">通常タイマー</button>
+        <button class="mode-button" id="pomodoroMode" type="button" aria-pressed="false">ポモドーロ</button>
+      </div>
+      <div class="pomodoro-details" id="pomodoroDetails" hidden aria-live="polite">
+        <div class="pomodoro-phase"><span class="phase-title" id="phaseTitle">作業中</span><span class="phase-count" id="phaseCount">1 / 4 セット</span></div>
+        <div class="round-indicators" id="roundIndicators" aria-hidden="true"><span aria-current="step"></span><span></span><span></span><span></span></div>
+        <p class="pomodoro-caption">作業25分 → 休憩5分 ／ 4セット後は休憩15分</p>
+      </div>
+      <div class="settings normal-settings" id="normalSettings">
+        <p class="section-label" id="durationLabel">時間を選ぶ</p>
+        <div class="presets" role="group" aria-labelledby="durationLabel">
+          <button type="button" class="preset" data-minutes="10" aria-pressed="false">10分</button>
+          <button type="button" class="preset" data-minutes="15" aria-pressed="false">15分</button>
+          <button type="button" class="preset" data-minutes="30" aria-pressed="true">30分</button>
+          <button type="button" class="preset" data-minutes="60" aria-pressed="false">60分</button>
+        </div>
+      </div>
+      <div class="controls" role="group" aria-label="タイマー操作">
+        <button class="action primary" id="startBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linejoin="round" aria-hidden="true"><path d="m8 5 12 7-12 7V5Z" fill="currentColor" stroke="none"/></svg><span id="startLabel">開始</span>
+        </button>
+        <button class="action" id="pauseBtn" type="button" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg><span>一時停止</span>
+        </button>
+        <button class="action" id="resetBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2.6 6.4M3 4v7h7"/></svg><span>リセット</span>
+        </button>
+      </div>
+      <div class="footer">
+        <label class="image-upload" for="imageInput">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.4" cy="8.6" r="1.5"/><path d="m3 17 5-5 4 4 3-3 6 5"/></svg>
+          画像を選ぶ
+        </label>
+        <button class="remove-image" id="removeImage" type="button" hidden>画像を削除</button>
+        <input type="file" id="imageInput" accept="image/*" aria-label="タイマーの中央画像を選択">
+      </div>
+      <div class="image-tuner" id="imageTuner" hidden aria-label="画像の位置調整">
+        <div class="tuner-heading">
+          <p class="section-label">画像の位置調整</p>
+          <button class="subtle-button" id="resetPosition" type="button">中央に戻す</button>
+        </div>
+        <p class="tuner-hint">円の中の画像を指やマウスで動かせます。細かい調整は下のバーから。</p>
+        <div class="tuner-controls">
+          <div class="range-row"><label for="imageX">左右</label><input type="range" id="imageX" min="0" max="100" step="1" value="50"><output id="xValue" for="imageX">50%</output></div>
+          <div class="range-row"><label for="imageY">上下</label><input type="range" id="imageY" min="0" max="100" step="1" value="50"><output id="yValue" for="imageY">50%</output></div>
+          <div class="range-row"><label for="imageZoom">拡大</label><input type="range" id="imageZoom" min="100" max="250" step="5" value="100"><output id="zoomValue" for="imageZoom">100%</output></div>
+        </div>
+      </div>
+      <p class="hint">画像や色はブラウザに自動保存を試みます。画像・設定の外部送信はありません。</p>
+      <div class="backup-panel" aria-label="設定のバックアップと復元">
+        <p class="backup-title">設定の保存・復元</p>
+        <div class="backup-actions">
+          <button type="button" class="backup-button" id="exportSettings">設定ファイルを保存</button>
+          <button type="button" class="backup-button" id="importSettings">設定ファイルを読み込む</button>
+        </div>
+        <input id="settingsFileInput" type="file" accept=".json,application/json" aria-label="設定ファイルを選択">
+        <p class="backup-note">画像・位置・カラーなどをまとめて保存します。Google Sitesの埋め込みでは自動保存が維持されない場合があるため、設定ファイルを保管してください。</p>
+        <p class="backup-feedback" id="backupFeedback" role="status" aria-live="polite"></p>
+      </div>
+      <div class="utility-row"><button class="reset-settings" id="clearSavedSettings" type="button">保存した設定を消す</button></div>
+      <div class="theme-panel" aria-label="カラー設定">
+        <div class="theme-heading"><p class="section-label">カラー</p></div>
+        <div class="swatches" role="group" aria-label="カラープリセット">
+          <button type="button" class="swatch" data-hue="213" aria-label="ネイビー" title="ネイビー" aria-pressed="true" style="--swatch-hue:213"></button>
+          <button type="button" class="swatch" data-hue="193" aria-label="スモーキーブルー" title="スモーキーブルー" aria-pressed="false" style="--swatch-hue:193"></button>
+          <button type="button" class="swatch" data-hue="168" aria-label="ティール" title="ティール" aria-pressed="false" style="--swatch-hue:168"></button>
+          <button type="button" class="swatch" data-hue="135" aria-label="セージ" title="セージ" aria-pressed="false" style="--swatch-hue:135"></button>
+          <button type="button" class="swatch" data-hue="265" aria-label="モーヴ" title="モーヴ" aria-pressed="false" style="--swatch-hue:265"></button>
+          <button type="button" class="swatch" data-hue="326" aria-label="ダスティローズ" title="ダスティローズ" aria-pressed="false" style="--swatch-hue:326"></button>
+          <button type="button" class="swatch" data-hue="26" aria-label="テラコッタ" title="テラコッタ" aria-pressed="false" style="--swatch-hue:26"></button>
+        </div>
+        <div class="hue-row"><label for="hueSlider">色合いを調整</label><input type="range" id="hueSlider" min="0" max="359" value="213" aria-label="色合いを調整。明るさと鮮やかさは変わりません"></div>
+      </div>
+      <div class="sound-panel" aria-label="タイマーの通知音">
+        <div class="sound-header">
+          <p class="section-label">通知音</p>
+          <label class="sound-switch"><input id="soundEnabled" type="checkbox" checked> 音を鳴らす</label>
+        </div>
+        <p class="sound-summary">開始：ピロン♪ ／ 終了：テレレレン♪ ／ 休憩開始：ポロン♪（各1回）</p>
+        <div class="sound-tools">
+          <button class="sound-control" type="button" id="previewStartSound">開始音を試聴</button>
+          <button class="sound-control" type="button" id="previewEndSound">終了音を試聴</button>
+          <button class="sound-control" type="button" id="previewBreakSound">休憩音を試聴</button>
+        </div>
+        <p class="sound-instructions">※端末が消音中の場合やブラウザの制限により鳴らないことがあります。</p>
+      </div>
+    </section>
+  </main>
+  <script>
+  (() => {
+    'use strict';
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const dialRadius = 155;
+    const center = 210;
+    const tickGroup = document.getElementById('tickGroup');
+    const fullRing = document.getElementById('fullRing');
+    const arc = document.getElementById('remainingArc');
+    const timeText = document.getElementById('timeText');
+    const status = document.getElementById('status');
+    const startBtn = document.getElementById('startBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const startLabel = document.getElementById('startLabel');
+    const presets = [...document.querySelectorAll('.preset')];
+    const normalModeButton = document.getElementById('normalMode');
+    const pomodoroModeButton = document.getElementById('pomodoroMode');
+    const normalSettings = document.getElementById('normalSettings');
+    const pomodoroDetails = document.getElementById('pomodoroDetails');
+    const phaseTitle = document.getElementById('phaseTitle');
+    const phaseCount = document.getElementById('phaseCount');
+    const roundIndicators = [...document.querySelectorAll('#roundIndicators span')];
+    const imageInput = document.getElementById('imageInput');
+    const imageCircle = document.getElementById('imageCircle');
+    const photo = document.getElementById('photo');
+    const removeImage = document.getElementById('removeImage');
+    const imageTuner = document.getElementById('imageTuner');
+    const imageX = document.getElementById('imageX');
+    const imageY = document.getElementById('imageY');
+    const imageZoom = document.getElementById('imageZoom');
+    const xValue = document.getElementById('xValue');
+    const yValue = document.getElementById('yValue');
+    const zoomValue = document.getElementById('zoomValue');
+    const resetPosition = document.getElementById('resetPosition');
+    const hueSlider = document.getElementById('hueSlider');
+    const swatches = [...document.querySelectorAll('.swatch')];
+    const soundEnabled = document.getElementById('soundEnabled');
+    const previewStartSound = document.getElementById('previewStartSound');
+    const previewEndSound = document.getElementById('previewEndSound');
+    const previewBreakSound = document.getElementById('previewBreakSound');
+    const clearSavedSettings = document.getElementById('clearSavedSettings');
+    const exportSettings = document.getElementById('exportSettings');
+    const importSettings = document.getElementById('importSettings');
+    const settingsFileInput = document.getElementById('settingsFileInput');
+    const backupFeedback = document.getElementById('backupFeedback');
+    let audioContext = null;
+    let completionNotified = false;
+
+    // Web Audio API: self-contained tones without external audio files.
+    // Audio playback is unlocked by a direct press on Start or a Preview button.
+    function unlockAudio() {
+      const AudioContextType = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextType) return null;
+      try {
+        if (!audioContext) audioContext = new AudioContextType();
+        if (audioContext.state === 'suspended') audioContext.resume().catch(() => {});
+        return audioContext;
+      } catch (error) { return null; }
+    }
+
+    function note(context, hz, onset, length, volume, overtone = 0) {
+      const base = context.currentTime + .025 + onset;
+      // A short softened attack and a smooth bell-like decay prevent clicks.
+      const fundamental = context.createOscillator();
+      const gain = context.createGain();
+      fundamental.type = 'sine';
+      fundamental.frequency.value = hz;
+      gain.gain.setValueAtTime(.0001, base);
+      gain.gain.exponentialRampToValueAtTime(Math.max(.0002, volume), base + .016);
+      gain.gain.exponentialRampToValueAtTime(.0001, base + length);
+      fundamental.connect(gain);
+      gain.connect(context.destination);
+      fundamental.start(base);
+      fundamental.stop(base + length + .012);
+      if (overtone > 0) {
+        const upper = context.createOscillator();
+        const upperGain = context.createGain();
+        upper.type = 'sine';
+        upper.frequency.value = hz * 2;
+        upperGain.gain.setValueAtTime(.0001, base);
+        upperGain.gain.exponentialRampToValueAtTime(volume * overtone, base + .016);
+        upperGain.gain.exponentialRampToValueAtTime(.0001, base + length * .72);
+        upper.connect(upperGain);
+        upperGain.connect(context.destination);
+        upper.start(base);
+        upper.stop(base + length * .72 + .012);
+      }
+    }
+
+    // Original short 'piron' two-note melody from v2, now played on Start.
+    function playStartSound(force = false) {
+      if (!force && !soundEnabled.checked) return;
+      const context = unlockAudio();
+      if (!context) return;
+      note(context, 587.33, 0, .50, .12);
+      note(context, 880, .14, .50, .12);
+    }
+
+    // New four-note upward 'terereren' fanfare. Each note plays only once.
+    function playCompletionSound(force = false) {
+      if (!force && !soundEnabled.checked) return;
+      const context = unlockAudio();
+      if (!context) return;
+      note(context, 392.00, 0, .28, .085, .15);  // G4
+      note(context, 493.88, .115, .30, .085, .15); // B4
+      note(context, 587.33, .230, .32, .085, .15); // D5
+      note(context, 783.99, .365, .75, .105, .12); // G5, longer finish
+    }
+
+    // A gentler, falling major-chord chime to mark the start of a break.
+    function playBreakSound(force = false) {
+      if (!force && !soundEnabled.checked) return;
+      const context = unlockAudio();
+      if (!context) return;
+      note(context, 659.25, 0, .38, .075, .08);      // E5
+      note(context, 523.25, .19, .43, .068, .08);   // C5
+      note(context, 392.00, .40, .73, .072, .06);   // G4
+    }
+
+    previewStartSound.addEventListener('click', () => playStartSound(true));
+    previewEndSound.addEventListener('click', () => playCompletionSound(true));
+    previewBreakSound.addEventListener('click', () => playBreakSound(true));
+
+
+    const SETTINGS_KEY = 'visual-timer-settings-v5';
+    const IMAGE_DB = 'visual-timer-db';
+    const IMAGE_STORE = 'assets';
+    const IMAGE_KEY = 'center-image';
+    let suppressAutoSave = false;
+    let restoreImageTransform = null;
+
+    function loadSettings() {
+      try {
+        const raw = localStorage.getItem(SETTINGS_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch (_) {
+        return {};
+      }
+    }
+
+    function openImageDB() {
+      return new Promise((resolve, reject) => {
+        if (!('indexedDB' in window)) { resolve(null); return; }
+        const request = indexedDB.open(IMAGE_DB, 1);
+        request.onupgradeneeded = () => {
+          const db = request.result;
+          if (!db.objectStoreNames.contains(IMAGE_STORE)) db.createObjectStore(IMAGE_STORE);
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function putStoredImage(blob) {
+      const db = await openImageDB();
+      if (!db) return;
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(IMAGE_STORE, 'readwrite');
+        tx.objectStore(IMAGE_STORE).put(blob, IMAGE_KEY);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('画像の保存に失敗しました'));
+      });
+      db.close();
+    }
+
+    async function getStoredImage() {
+      const db = await openImageDB();
+      if (!db) return null;
+      const result = await new Promise((resolve, reject) => {
+        const tx = db.transaction(IMAGE_STORE, 'readonly');
+        const request = tx.objectStore(IMAGE_STORE).get(IMAGE_KEY);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+      }).catch(() => null);
+      db.close();
+      return result;
+    }
+
+    async function deleteStoredImage() {
+      const db = await openImageDB();
+      if (!db) return;
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(IMAGE_STORE, 'readwrite');
+        tx.objectStore(IMAGE_STORE).delete(IMAGE_KEY);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('画像の削除に失敗しました'));
+      }).catch(() => {});
+      db.close();
+    }
+
+    function saveSettings() {
+      if (suppressAutoSave) return;
+      const data = {
+        minutes: normalMinutes,
+        mode: timerMode,
+        themeHue: Math.round(Number(hueSlider.value)),
+        soundEnabled: !!soundEnabled.checked,
+        image: {
+          hasImage: !!imageURL,
+          x: Math.round(positionX),
+          y: Math.round(positionY),
+          zoom: zoom
+        }
+      };
+      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(data)); } catch (_) {}
+    }
+
+    async function clearSavedSettingsAndReset() {
+      if (!window.confirm('保存した画像や設定をこのブラウザから消します。よろしいですか？')) return;
+      suppressAutoSave = true;
+      try { localStorage.removeItem(SETTINGS_KEY); } catch (_) {}
+      await deleteStoredImage();
+      setThemeHue(213);
+      soundEnabled.checked = true;
+      setMinutes(30);
+      setMode('normal', { force: true });
+      removeCurrentImage();
+      suppressAutoSave = false;
+      saveSettings();
+      status.textContent = '保存した設定を消去しました';
+      status.classList.remove('completed');
+    }
+
+    clearSavedSettings.addEventListener('click', () => { clearSavedSettingsAndReset(); });
+
+    let timerMode = 'normal'; // normal or pomodoro
+    let normalMinutes = 30;
+    let pomoPhase = 'work'; // work, short, long
+    let pomoRound = 1; // work-round number, 1 through 4
+    let durationMs = 30 * 60 * 1000;
+    let remainingMs = durationMs;
+    let state = 'ready'; // ready, running, paused, completed
+    let deadline = 0;
+    let updateTimer = null;
+    let imageURL = null;
+    let currentImageBlob = null;
+
+    function pomodoroDurationMs(phase) {
+      return (phase === 'work' ? 25 : phase === 'short' ? 5 : 15) * 60000;
+    }
+
+    function displayMode() {
+      normalModeButton.setAttribute('aria-pressed', String(timerMode === 'normal'));
+      pomodoroModeButton.setAttribute('aria-pressed', String(timerMode === 'pomodoro'));
+      normalSettings.hidden = timerMode !== 'normal';
+      pomodoroDetails.hidden = timerMode !== 'pomodoro';
+      if (timerMode === 'pomodoro') {
+        phaseTitle.textContent = pomoPhase === 'work' ? '作業中' : (pomoPhase === 'short' ? '短い休憩' : '長い休憩');
+        phaseCount.textContent = `${pomoRound} / 4 セット`;
+        roundIndicators.forEach((dot, i) => {
+          if (i + 1 === pomoRound) dot.setAttribute('aria-current', 'step');
+          else dot.removeAttribute('aria-current');
+        });
+      }
+    }
+
+    function setMode(mode, { force = false } = {}) {
+      if (!['normal', 'pomodoro'].includes(mode) || (mode === timerMode && !force)) return;
+      if (!force && (state === 'running' || state === 'paused') &&
+          !window.confirm('モードを切り替えると、今のカウントダウンをリセットします。よろしいですか？')) return;
+      timerMode = mode;
+      pomoPhase = 'work';
+      pomoRound = 1;
+      durationMs = mode === 'pomodoro' ? pomodoroDurationMs(pomoPhase) : normalMinutes * 60000;
+      displayMode();
+      reset();
+      saveSettings();
+    }
+
+    normalModeButton.addEventListener('click', () => setMode('normal'));
+    pomodoroModeButton.addEventListener('click', () => setMode('pomodoro'));
+
+    // 12 equally spaced marks with no numerals.
+    for (let i = 0; i < 12; i++) {
+      const angle = (i * 30 - 90) * Math.PI / 180;
+      const x1 = center + Math.cos(angle) * 188;
+      const y1 = center + Math.sin(angle) * 188;
+      const x2 = center + Math.cos(angle) * 199;
+      const y2 = center + Math.sin(angle) * 199;
+      const line = document.createElementNS(svgNS, 'line');
+      line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+      line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+      line.setAttribute('class', 'tick');
+      tickGroup.appendChild(line);
+    }
+
+    function point(degrees) {
+      const angle = (degrees - 90) * Math.PI / 180;
+      return { x: center + dialRadius * Math.cos(angle), y: center + dialRadius * Math.sin(angle) };
+    }
+
+    // As the timer runs, the ring disappears clockwise from the top.
+    function drawRemaining(fraction) {
+      const f = Math.max(0, Math.min(1, fraction));
+      if (f >= 0.999999) {
+        fullRing.style.display = '';
+        arc.setAttribute('d', '');
+        return;
+      }
+      fullRing.style.display = 'none';
+      if (f <= 0) {
+        arc.setAttribute('d', '');
+        return;
+      }
+      const from = point((1 - f) * 360);
+      const to = point(360);
+      const largeArc = f > .5 ? 1 : 0;
+      arc.setAttribute('d', `M ${from.x} ${from.y} A ${dialRadius} ${dialRadius} 0 ${largeArc} 1 ${to.x} ${to.y}`);
+    }
+
+    function formatTime(ms) {
+      const totalSeconds = Math.ceil(Math.max(0, ms) / 1000);
+      const mm = Math.floor(totalSeconds / 60);
+      const ss = String(totalSeconds % 60).padStart(2, '0');
+      return `${String(mm).padStart(2, '0')}:${ss}`;
+    }
+
+    function render() {
+      const time = formatTime(remainingMs);
+      timeText.textContent = time;
+      timeText.setAttribute('aria-label', `残り時間 ${time}`);
+      drawRemaining(remainingMs / durationMs);
+      displayMode();
+      startBtn.disabled = state === 'running' || state === 'completed';
+      pauseBtn.disabled = state !== 'running';
+      startLabel.textContent = state === 'paused' ? '再開' : '開始';
+      const messages = {
+        ready: '準備完了', running: 'カウントダウン中', paused: '一時停止中', completed: '時間になりました'
+      };
+      if (status.textContent !== messages[state]) status.textContent = messages[state];
+      status.classList.toggle('completed', state === 'completed');
+      const phase = timerMode === 'pomodoro' ? ` ${pomoPhase === 'work' ? '作業' : '休憩'} ${pomoRound}/4` : '';
+      document.title = state === 'running' || state === 'paused' ? `${time}${phase}｜ビジュアルタイマー` : 'ビジュアルタイマー';
+    }
+
+    function stopTick() {
+      if (updateTimer !== null) { clearInterval(updateTimer); updateTimer = null; }
+    }
+
+    function nextPomodoroPhase() {
+      if (pomoPhase === 'work') {
+        pomoPhase = pomoRound === 4 ? 'long' : 'short';
+      } else {
+        if (pomoRound === 4) pomoRound = 1;
+        else pomoRound++;
+        pomoPhase = 'work';
+      }
+      durationMs = pomodoroDurationMs(pomoPhase);
+      remainingMs = durationMs;
+    }
+
+    // Deadline is based on real time, so a tab returning from the background
+    // catches up and switches work/break phases without stacking notification sounds.
+    function tick() {
+      if (state !== 'running') return;
+      const now = Date.now();
+      let transitions = 0;
+      if (timerMode === 'pomodoro') {
+        while (deadline <= now && transitions < 10000) {
+          nextPomodoroPhase();
+          deadline += durationMs;
+          transitions++;
+        }
+        // Rare extreme elapsed times (e.g. months): keep the timer usable.
+        if (deadline <= now) deadline = now + durationMs;
+        remainingMs = Math.max(0, deadline - now);
+        if (transitions > 0) {
+          // Distinguish the start of a break from the start of the next work phase.
+          if (pomoPhase === 'short' || pomoPhase === 'long') playBreakSound();
+          else playCompletionSound();
+        }
+      } else {
+        remainingMs = Math.max(0, deadline - now);
+        if (remainingMs <= 0) finish();
+      }
+      render();
+    }
+
+    function finish() {
+      if (state === 'completed') return;
+      remainingMs = 0;
+      state = 'completed';
+      stopTick();
+      if (!completionNotified) {
+        completionNotified = true;
+        playCompletionSound();
+      }
+    }
+
+    function start() {
+      if (state === 'running' || state === 'completed') return;
+      if (state === 'ready') playStartSound();
+      else unlockAudio();
+      state = 'running';
+      deadline = Date.now() + remainingMs;
+      stopTick();
+      updateTimer = setInterval(tick, 60);
+      render();
+    }
+
+    function pause() {
+      if (state !== 'running') return;
+      tick();
+      if (state !== 'running') return;
+      remainingMs = Math.max(0, deadline - Date.now());
+      if (remainingMs <= 0 && timerMode === 'normal') finish();
+      else { state = 'paused'; stopTick(); }
+      render();
+    }
+
+    function reset() {
+      stopTick();
+      if (timerMode === 'pomodoro') {
+        pomoPhase = 'work';
+        pomoRound = 1;
+        durationMs = pomodoroDurationMs('work');
+      } else {
+        durationMs = normalMinutes * 60000;
+      }
+      remainingMs = durationMs;
+      state = 'ready';
+      completionNotified = false;
+      render();
+    }
+
+    function setMinutes(minutes) {
+      if (![10, 15, 30, 60].includes(minutes)) return;
+      normalMinutes = minutes;
+      for (const button of presets) {
+        button.setAttribute('aria-pressed', String(Number(button.dataset.minutes) === minutes));
+      }
+      if (timerMode === 'normal') reset();
+      saveSettings();
+    }
+
+    startBtn.addEventListener('click', start);
+    pauseBtn.addEventListener('click', pause);
+    resetBtn.addEventListener('click', reset);
+    for (const button of presets) {
+      button.addEventListener('click', () => setMinutes(Number(button.dataset.minutes)));
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) tick();
+    });
+
+    // A light/darkness matched palette: only the hue of each theme variable changes.
+    function setThemeHue(value) {
+      const hue = Math.round(Math.max(0, Math.min(359, Number(value))));
+      document.documentElement.style.setProperty('--theme-hue', String(hue));
+      hueSlider.value = String(hue);
+      for (const swatch of swatches) {
+        swatch.setAttribute('aria-pressed', String(Number(swatch.dataset.hue) === hue));
+      }
+      const themeColor = document.querySelector('meta[name="theme-color"]');
+      if (themeColor) themeColor.content = getComputedStyle(document.body).backgroundColor;
+      saveSettings();
+    }
+    for (const swatch of swatches) {
+      swatch.addEventListener('click', () => setThemeHue(swatch.dataset.hue));
+    }
+    hueSlider.addEventListener('input', () => setThemeHue(hueSlider.value));
+
+    // Crop and pan an uploaded image inside the circular viewport.
+    // x/y are percentages of the available crop movement, not CSS offsets.
+    let positionX = 50;
+    let positionY = 50;
+    let zoom = 100;
+    let cropOverflowX = 0;
+    let cropOverflowY = 0;
+    let activeDrag = null;
+    let suppressImageClick = false;
+    function clamp(value, low, high) { return Math.max(low, Math.min(high, value)); }
+
+    function drawImageCrop() {
+      if (!imageURL || !photo.naturalWidth || !photo.naturalHeight) return;
+      const boxW = imageCircle.clientWidth;
+      const boxH = imageCircle.clientHeight;
+      if (!boxW || !boxH) return;
+      const coverScale = Math.max(boxW / photo.naturalWidth, boxH / photo.naturalHeight);
+      const actualScale = coverScale * zoom / 100;
+      const scaledW = photo.naturalWidth * actualScale;
+      const scaledH = photo.naturalHeight * actualScale;
+      cropOverflowX = Math.max(0, scaledW - boxW);
+      cropOverflowY = Math.max(0, scaledH - boxH);
+      const moveX = (0.5 - positionX / 100) * cropOverflowX;
+      const moveY = (0.5 - positionY / 100) * cropOverflowY;
+      photo.style.width = scaledW + 'px';
+      photo.style.height = scaledH + 'px';
+      photo.style.transform = `translate(-50%, -50%) translate(${moveX}px, ${moveY}px)`;
+    }
+
+    function syncImageControls() {
+      imageX.value = String(Math.round(positionX));
+      imageY.value = String(Math.round(positionY));
+      imageZoom.value = String(zoom);
+      xValue.value = `${Math.round(positionX)}%`;
+      yValue.value = `${Math.round(positionY)}%`;
+      zoomValue.value = `${zoom}%`;
+      drawImageCrop();
+      saveSettings();
+    }
+    function resetImagePosition() {
+      positionX = 50;
+      positionY = 50;
+      zoom = 100;
+      syncImageControls();
+    }
+    resetPosition.addEventListener('click', resetImagePosition);
+    imageX.addEventListener('input', () => { positionX = Number(imageX.value); syncImageControls(); });
+    imageY.addEventListener('input', () => { positionY = Number(imageY.value); syncImageControls(); });
+    imageZoom.addEventListener('input', () => { zoom = Number(imageZoom.value); syncImageControls(); });
+    photo.addEventListener('load', () => {
+      if (restoreImageTransform) {
+        positionX = restoreImageTransform.x;
+        positionY = restoreImageTransform.y;
+        zoom = restoreImageTransform.zoom;
+        restoreImageTransform = null;
+        syncImageControls();
+      } else {
+        resetImagePosition();
+      }
+    });
+    if ('ResizeObserver' in window) {
+      new ResizeObserver(drawImageCrop).observe(imageCircle);
+    } else {
+      window.addEventListener('resize', drawImageCrop);
+    }
+
+    function applyImageURL(nextURL, transform = null, blob = null) {
+      if (imageURL) URL.revokeObjectURL(imageURL);
+      imageURL = nextURL;
+      currentImageBlob = blob;
+      restoreImageTransform = transform;
+      photo.src = imageURL;
+      imageCircle.classList.add('has-image');
+      imageCircle.setAttribute('aria-label', '画像をドラッグして位置を調整。タップすると画像を変更できます');
+      removeImage.hidden = false;
+      imageTuner.hidden = false;
+      if (!transform) resetImagePosition();
+    }
+
+    async function chooseImage(file) {
+      if (!file || !file.type.startsWith('image/')) return;
+      const nextURL = URL.createObjectURL(file);
+      applyImageURL(nextURL, null, file);
+      try { await putStoredImage(file); } catch (_) {}
+      saveSettings();
+    }
+
+    async function restoreSavedImage(transform) {
+      const blob = await getStoredImage();
+      if (!blob) return;
+      const nextURL = URL.createObjectURL(blob);
+      applyImageURL(nextURL, transform, blob);
+    }
+
+    function removeCurrentImage() {
+      imageInput.value = '';
+      photo.removeAttribute('src');
+      imageCircle.classList.remove('has-image');
+      imageCircle.setAttribute('aria-label', '中央の画像を選ぶ。クリックまたはタップして変更できます');
+      imageTuner.hidden = true;
+      removeImage.hidden = true;
+      if (imageURL) URL.revokeObjectURL(imageURL);
+      imageURL = null;
+      currentImageBlob = null;
+      activeDrag = null;
+      suppressImageClick = false;
+      cropOverflowX = cropOverflowY = 0;
+      restoreImageTransform = null;
+      resetImagePosition();
+      saveSettings();
+    }
+    imageInput.addEventListener('change', () => {
+      chooseImage(imageInput.files && imageInput.files[0]);
+    });
+    imageCircle.addEventListener('pointerdown', event => {
+      if (!imageURL || (event.pointerType === 'mouse' && event.button !== 0)) return;
+      activeDrag = { id: event.pointerId, startX: event.clientX, startY: event.clientY,
+        firstX: positionX, firstY: positionY, overflowX: cropOverflowX,
+        overflowY: cropOverflowY, moved: false };
+      imageCircle.setPointerCapture(event.pointerId);
+    });
+    imageCircle.addEventListener('pointermove', event => {
+      if (!activeDrag || activeDrag.id !== event.pointerId) return;
+      const dx = event.clientX - activeDrag.startX;
+      const dy = event.clientY - activeDrag.startY;
+      if (!activeDrag.moved && Math.hypot(dx, dy) < 4) return;
+      activeDrag.moved = true;
+      imageCircle.classList.add('is-panning');
+      if (activeDrag.overflowX > 0.01) {
+        const firstOffsetX = (0.5 - activeDrag.firstX / 100) * activeDrag.overflowX;
+        positionX = clamp(50 - (firstOffsetX + dx) / activeDrag.overflowX * 100, 0, 100);
+      }
+      if (activeDrag.overflowY > 0.01) {
+        const firstOffsetY = (0.5 - activeDrag.firstY / 100) * activeDrag.overflowY;
+        positionY = clamp(50 - (firstOffsetY + dy) / activeDrag.overflowY * 100, 0, 100);
+      }
+      syncImageControls();
+    });
+    function endImageDrag(event) {
+      if (!activeDrag || activeDrag.id !== event.pointerId) return;
+      suppressImageClick = activeDrag.moved;
+      activeDrag = null;
+      imageCircle.classList.remove('is-panning');
+      if (imageCircle.hasPointerCapture(event.pointerId)) imageCircle.releasePointerCapture(event.pointerId);
+    }
+    imageCircle.addEventListener('pointerup', endImageDrag);
+    imageCircle.addEventListener('pointercancel', endImageDrag);
+    imageCircle.addEventListener('click', event => {
+      if (suppressImageClick) { suppressImageClick = false; event.preventDefault(); return; }
+      imageInput.click();
+    });
+    imageCircle.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        imageInput.click();
+      }
+    });
+    imageCircle.addEventListener('dragstart', e => e.preventDefault());
+    imageCircle.addEventListener('dragover', event => {
+      event.preventDefault();
+      imageCircle.classList.add('drag-over');
+    });
+    imageCircle.addEventListener('dragleave', () => imageCircle.classList.remove('drag-over'));
+    imageCircle.addEventListener('drop', event => {
+      event.preventDefault();
+      imageCircle.classList.remove('drag-over');
+      chooseImage(event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0]);
+    });
+    removeImage.addEventListener('click', async () => {
+      removeCurrentImage();
+      await deleteStoredImage();
+      saveSettings();
+    });
+    window.addEventListener('pagehide', () => {
+      if (imageURL) URL.revokeObjectURL(imageURL);
+    });
+
+
+    // Portable backup for Google Sites embeds.  Direct HTML-code iframes can
+    // change their storage origin between visits, so relying on localStorage
+    // and IndexedDB alone cannot guarantee persistence.
+    function setBackupFeedback(message, isError = false) {
+      backupFeedback.textContent = message;
+      backupFeedback.style.color = isError ? '#a33b3b' : 'var(--navy)';
+    }
+
+    async function blobToDataURL(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('画像を読み取れませんでした'));
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    function dataURLToBlob(url) {
+      const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,([a-zA-Z0-9+/=\s]+)$/.exec(url);
+      if (!match || !match[2] || match[2].length > 40 * 1024 * 1024) {
+        throw new Error('保存された画像データが不正か、大きすぎます');
+      }
+      let bytes;
+      try {
+        const binary = atob(match[2].replace(/\s+/g, ''));
+        bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      } catch (_) { throw new Error('画像のデータを読み取れませんでした'); }
+      return new Blob([bytes], {type: match[1]});
+    }
+
+    function createSettingsSnapshot() {
+      return {
+        minutes: normalMinutes,
+        mode: timerMode,
+        themeHue: Math.round(Number(hueSlider.value)),
+        soundEnabled: !!soundEnabled.checked,
+        image: {
+          hasImage: !!imageURL,
+          x: Math.round(positionX),
+          y: Math.round(positionY),
+          zoom: zoom
+        }
+      };
+    }
+
+    async function downloadSettings() {
+      exportSettings.disabled = true;
+      setBackupFeedback('設定ファイルを作成しています…');
+      try {
+        let imageDataURL = null;
+        if (imageURL) {
+          let blob = currentImageBlob;
+          if (!blob) {
+            try { blob = await getStoredImage(); } catch (_) {}
+          }
+          if (!blob) throw new Error('画像を保存用に読み取れませんでした。画像を選び直してください');
+          imageDataURL = await blobToDataURL(blob);
+        }
+        const backup = {
+          type: 'shimaya-visual-timer-settings',
+          version: 1,
+          settings: createSettingsSnapshot(),
+          imageDataURL
+        };
+        const fileBlob = new Blob([JSON.stringify(backup)], {type: 'application/json;charset=utf-8'});
+        const fileUrl = URL.createObjectURL(fileBlob);
+        const link = document.createElement('a');
+        link.href = fileUrl;
+        link.download = 'ビジュアルタイマー_設定.json';
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(fileUrl), 30000);
+        setBackupFeedback('保存ファイルを作成しました。ダウンロードを確認してください。');
+      } catch (error) {
+        setBackupFeedback(error.message || '設定ファイルを保存できませんでした', true);
+      } finally {
+        exportSettings.disabled = false;
+      }
+    }
+
+    async function readSettingsFile(file) {
+      if (!file) return;
+      if (file.size > 30 * 1024 * 1024) {
+        setBackupFeedback('ファイルが大きすぎます（上限30MB）', true);
+        return;
+      }
+      importSettings.disabled = true;
+      try {
+        const data = JSON.parse(await file.text());
+        if (!data || data.type !== 'shimaya-visual-timer-settings' || data.version !== 1 || !data.settings || typeof data.settings !== 'object') {
+          throw new Error('このツールの設定ファイルではありません');
+        }
+        const settings = data.settings;
+        const savedMinutes = Number(settings.minutes);
+        const minutes = [10, 15, 30, 60].includes(savedMinutes) ? savedMinutes : 30;
+        const rawHue = Number(settings.themeHue);
+        const hue = Number.isFinite(rawHue) ? clamp(Math.round(rawHue), 0, 359) : 213;
+        const image = settings.image && typeof settings.image === 'object' ? settings.image : {};
+        const transform = {
+          x: clamp(Number.isFinite(Number(image.x)) ? Number(image.x) : 50, 0, 100),
+          y: clamp(Number.isFinite(Number(image.y)) ? Number(image.y) : 50, 0, 100),
+          zoom: clamp(Number.isFinite(Number(image.zoom)) ? Number(image.zoom) : 100, 100, 250)
+        };
+        // Decode before changing current settings so corrupt input cannot clear them.
+        let decodedImage = null;
+        if (data.imageDataURL !== null && data.imageDataURL !== undefined) {
+          if (typeof data.imageDataURL !== 'string') throw new Error('画像の形式が不正です');
+          decodedImage = dataURLToBlob(data.imageDataURL);
+          if (decodedImage.size > 20 * 1024 * 1024) throw new Error('画像が大きすぎます（上限20MB）');
+        } else if (image.hasImage) {
+          throw new Error('この設定ファイルには画像が含まれていません');
+        }
+
+        suppressAutoSave = true;
+        setThemeHue(hue);
+        soundEnabled.checked = settings.soundEnabled !== false;
+        setMinutes(minutes);
+        setMode(settings.mode === 'pomodoro' ? 'pomodoro' : 'normal', {force: true});
+        if (decodedImage) {
+          positionX = transform.x;
+          positionY = transform.y;
+          zoom = transform.zoom;
+          applyImageURL(URL.createObjectURL(decodedImage), transform, decodedImage);
+        } else {
+          removeCurrentImage();
+        }
+        suppressAutoSave = false;
+        saveSettings();
+        try {
+          if (decodedImage) await putStoredImage(decodedImage);
+          else await deleteStoredImage();
+        } catch (_) {
+          // Still restored in memory: manual backup remains usable even in
+          // browser contexts that prohibit IndexedDB writes.
+        }
+        setBackupFeedback('画像と設定を復元しました。');
+      } catch (error) {
+        suppressAutoSave = false;
+        setBackupFeedback(error.message || '設定を読み込めませんでした', true);
+      } finally {
+        settingsFileInput.value = '';
+        importSettings.disabled = false;
+      }
+    }
+
+    exportSettings.addEventListener('click', downloadSettings);
+    importSettings.addEventListener('click', () => settingsFileInput.click());
+    settingsFileInput.addEventListener('change', () => readSettingsFile(settingsFileInput.files && settingsFileInput.files[0]));
+
+    soundEnabled.addEventListener('change', saveSettings);
+
+    async function restoreSavedState() {
+      const settings = loadSettings();
+      suppressAutoSave = true;
+      const savedHue = Number(settings.themeHue);
+      setThemeHue(Number.isFinite(savedHue) ? savedHue : 213);
+      soundEnabled.checked = settings.soundEnabled !== false;
+      const savedMinutes = Number(settings.minutes);
+      setMinutes([10, 15, 30, 60].includes(savedMinutes) ? savedMinutes : 30);
+      setMode(settings.mode === 'pomodoro' ? 'pomodoro' : 'normal', { force: true });
+      if (settings.image && settings.image.hasImage) {
+        const restoredX = Number.isFinite(Number(settings.image.x)) ? Number(settings.image.x) : 50;
+        const restoredY = Number.isFinite(Number(settings.image.y)) ? Number(settings.image.y) : 50;
+        const restoredZoom = Number.isFinite(Number(settings.image.zoom)) ? Number(settings.image.zoom) : 100;
+        await restoreSavedImage({
+          x: clamp(restoredX, 0, 100),
+          y: clamp(restoredY, 0, 100),
+          zoom: clamp(restoredZoom, 100, 250)
+        });
+      }
+      suppressAutoSave = false;
+      saveSettings();
+      render();
+    }
+
+    restoreSavedState();
+  })();
+  </script>
+</body>
+</html>
