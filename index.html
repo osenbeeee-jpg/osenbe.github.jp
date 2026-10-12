@@ -36,7 +36,7 @@
     .page {
       width: min(100% - 28px, 560px);
       margin: 0 auto;
-      padding: clamp(24px, 5vh, 48px) 0 max(28px, env(safe-area-inset-bottom));
+      padding: clamp(24px, 5vh, 48px) 0 calc(64px + env(safe-area-inset-bottom));
     }
     header { text-align: center; margin-bottom: 16px; }
     .eyebrow { margin: 0; font-size: 11px; letter-spacing: .23em; color: var(--muted); font-weight: 700; }
@@ -185,19 +185,10 @@
     }
     .remove-image[hidden] { display: none; }
     .hint { color: var(--muted); text-align: center; font-size: 11px; margin: 13px 0 0; line-height: 1.6; }
-    .backup-panel { margin-top: 13px; border: 1px solid var(--line); border-radius: 13px; background: var(--accent-soft); padding: 14px; }
-    .backup-title { font-size: 12px; font-weight: 700; margin: 0 0 7px; color: var(--ink); }
-    .backup-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
-    .backup-button { display: flex; justify-content: center; align-items: center; padding: 8px 6px; min-height: 44px; color: var(--navy); border: 1px solid var(--line); background: #fff; border-radius: 10px; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; text-align: center; }
-    .backup-button:hover { background: var(--accent-hover); }
-    .backup-button:disabled { opacity: .55; cursor: wait; }
-    .backup-note { margin: 9px 0 0; color: var(--muted); font-size: 11px; line-height: 1.65; }
-    .backup-feedback { font-size: 11px; margin: 7px 0 0; color: var(--navy); min-height: 0; line-height: 1.5; }
-    .backup-feedback:empty { display: none; }
     .utility-row { margin-top: 10px; display: flex; justify-content: center; }
     .reset-settings { min-height: 36px; border: none; background: transparent; color: var(--muted); cursor: pointer; padding: 0 8px; font-size: 12px; font-weight: 600; }
     .reset-settings:hover { color: var(--ink); }
-    .sound-panel { margin-top: 17px; border-top: 1px solid var(--line); padding-top: 16px; }
+    .sound-panel { margin-top: 17px; border-top: 1px solid var(--line); padding-top: 16px; padding-bottom: 16px; }
     .sound-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .sound-header .section-label { margin: 0; }
     .sound-switch { display: inline-flex; gap: 7px; align-items: center; color: var(--ink); font-size: 12px; font-weight: 600; cursor: pointer; min-height: 30px; }
@@ -352,16 +343,6 @@
         </div>
       </div>
       <p class="hint">画像や色はブラウザに自動保存を試みます。画像・設定の外部送信はありません。</p>
-      <div class="backup-panel" aria-label="設定のバックアップと復元">
-        <p class="backup-title">設定の保存・復元</p>
-        <div class="backup-actions">
-          <button type="button" class="backup-button" id="exportSettings">設定ファイルを保存</button>
-          <button type="button" class="backup-button" id="importSettings">設定ファイルを読み込む</button>
-        </div>
-        <input id="settingsFileInput" type="file" accept=".json,application/json" aria-label="設定ファイルを選択">
-        <p class="backup-note">画像・位置・カラーなどをまとめて保存します。Google Sitesの埋め込みでは自動保存が維持されない場合があるため、設定ファイルを保管してください。</p>
-        <p class="backup-feedback" id="backupFeedback" role="status" aria-live="polite"></p>
-      </div>
       <div class="utility-row"><button class="reset-settings" id="clearSavedSettings" type="button">保存した設定を消す</button></div>
       <div class="theme-panel" aria-label="カラー設定">
         <div class="theme-heading"><p class="section-label">カラー</p></div>
@@ -433,10 +414,6 @@
     const previewEndSound = document.getElementById('previewEndSound');
     const previewBreakSound = document.getElementById('previewBreakSound');
     const clearSavedSettings = document.getElementById('clearSavedSettings');
-    const exportSettings = document.getElementById('exportSettings');
-    const importSettings = document.getElementById('importSettings');
-    const settingsFileInput = document.getElementById('settingsFileInput');
-    const backupFeedback = document.getElementById('backupFeedback');
     let audioContext = null;
     let completionNotified = false;
 
@@ -1033,158 +1010,6 @@
       if (imageURL) URL.revokeObjectURL(imageURL);
     });
 
-
-    // Portable backup for Google Sites embeds.  Direct HTML-code iframes can
-    // change their storage origin between visits, so relying on localStorage
-    // and IndexedDB alone cannot guarantee persistence.
-    function setBackupFeedback(message, isError = false) {
-      backupFeedback.textContent = message;
-      backupFeedback.style.color = isError ? '#a33b3b' : 'var(--navy)';
-    }
-
-    async function blobToDataURL(blob) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = () => reject(new Error('画像を読み取れませんでした'));
-        reader.readAsDataURL(blob);
-      });
-    }
-
-    function dataURLToBlob(url) {
-      const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,([a-zA-Z0-9+/=\s]+)$/.exec(url);
-      if (!match || !match[2] || match[2].length > 40 * 1024 * 1024) {
-        throw new Error('保存された画像データが不正か、大きすぎます');
-      }
-      let bytes;
-      try {
-        const binary = atob(match[2].replace(/\s+/g, ''));
-        bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      } catch (_) { throw new Error('画像のデータを読み取れませんでした'); }
-      return new Blob([bytes], {type: match[1]});
-    }
-
-    function createSettingsSnapshot() {
-      return {
-        minutes: normalMinutes,
-        mode: timerMode,
-        themeHue: Math.round(Number(hueSlider.value)),
-        soundEnabled: !!soundEnabled.checked,
-        image: {
-          hasImage: !!imageURL,
-          x: Math.round(positionX),
-          y: Math.round(positionY),
-          zoom: zoom
-        }
-      };
-    }
-
-    async function downloadSettings() {
-      exportSettings.disabled = true;
-      setBackupFeedback('設定ファイルを作成しています…');
-      try {
-        let imageDataURL = null;
-        if (imageURL) {
-          let blob = currentImageBlob;
-          if (!blob) {
-            try { blob = await getStoredImage(); } catch (_) {}
-          }
-          if (!blob) throw new Error('画像を保存用に読み取れませんでした。画像を選び直してください');
-          imageDataURL = await blobToDataURL(blob);
-        }
-        const backup = {
-          type: 'shimaya-visual-timer-settings',
-          version: 1,
-          settings: createSettingsSnapshot(),
-          imageDataURL
-        };
-        const fileBlob = new Blob([JSON.stringify(backup)], {type: 'application/json;charset=utf-8'});
-        const fileUrl = URL.createObjectURL(fileBlob);
-        const link = document.createElement('a');
-        link.href = fileUrl;
-        link.download = 'ビジュアルタイマー_設定.json';
-        link.style.display = 'none';
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(fileUrl), 30000);
-        setBackupFeedback('保存ファイルを作成しました。ダウンロードを確認してください。');
-      } catch (error) {
-        setBackupFeedback(error.message || '設定ファイルを保存できませんでした', true);
-      } finally {
-        exportSettings.disabled = false;
-      }
-    }
-
-    async function readSettingsFile(file) {
-      if (!file) return;
-      if (file.size > 30 * 1024 * 1024) {
-        setBackupFeedback('ファイルが大きすぎます（上限30MB）', true);
-        return;
-      }
-      importSettings.disabled = true;
-      try {
-        const data = JSON.parse(await file.text());
-        if (!data || data.type !== 'shimaya-visual-timer-settings' || data.version !== 1 || !data.settings || typeof data.settings !== 'object') {
-          throw new Error('このツールの設定ファイルではありません');
-        }
-        const settings = data.settings;
-        const savedMinutes = Number(settings.minutes);
-        const minutes = [10, 15, 30, 60].includes(savedMinutes) ? savedMinutes : 30;
-        const rawHue = Number(settings.themeHue);
-        const hue = Number.isFinite(rawHue) ? clamp(Math.round(rawHue), 0, 359) : 213;
-        const image = settings.image && typeof settings.image === 'object' ? settings.image : {};
-        const transform = {
-          x: clamp(Number.isFinite(Number(image.x)) ? Number(image.x) : 50, 0, 100),
-          y: clamp(Number.isFinite(Number(image.y)) ? Number(image.y) : 50, 0, 100),
-          zoom: clamp(Number.isFinite(Number(image.zoom)) ? Number(image.zoom) : 100, 100, 250)
-        };
-        // Decode before changing current settings so corrupt input cannot clear them.
-        let decodedImage = null;
-        if (data.imageDataURL !== null && data.imageDataURL !== undefined) {
-          if (typeof data.imageDataURL !== 'string') throw new Error('画像の形式が不正です');
-          decodedImage = dataURLToBlob(data.imageDataURL);
-          if (decodedImage.size > 20 * 1024 * 1024) throw new Error('画像が大きすぎます（上限20MB）');
-        } else if (image.hasImage) {
-          throw new Error('この設定ファイルには画像が含まれていません');
-        }
-
-        suppressAutoSave = true;
-        setThemeHue(hue);
-        soundEnabled.checked = settings.soundEnabled !== false;
-        setMinutes(minutes);
-        setMode(settings.mode === 'pomodoro' ? 'pomodoro' : 'normal', {force: true});
-        if (decodedImage) {
-          positionX = transform.x;
-          positionY = transform.y;
-          zoom = transform.zoom;
-          applyImageURL(URL.createObjectURL(decodedImage), transform, decodedImage);
-        } else {
-          removeCurrentImage();
-        }
-        suppressAutoSave = false;
-        saveSettings();
-        try {
-          if (decodedImage) await putStoredImage(decodedImage);
-          else await deleteStoredImage();
-        } catch (_) {
-          // Still restored in memory: manual backup remains usable even in
-          // browser contexts that prohibit IndexedDB writes.
-        }
-        setBackupFeedback('画像と設定を復元しました。');
-      } catch (error) {
-        suppressAutoSave = false;
-        setBackupFeedback(error.message || '設定を読み込めませんでした', true);
-      } finally {
-        settingsFileInput.value = '';
-        importSettings.disabled = false;
-      }
-    }
-
-    exportSettings.addEventListener('click', downloadSettings);
-    importSettings.addEventListener('click', () => settingsFileInput.click());
-    settingsFileInput.addEventListener('change', () => readSettingsFile(settingsFileInput.files && settingsFileInput.files[0]));
 
     soundEnabled.addEventListener('change', saveSettings);
 
